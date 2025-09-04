@@ -1,39 +1,79 @@
-name: MSVC Static Library
+name: Windows Static Library Build
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # 保留手动触发
+  workflow_dispatch:
 
 jobs:
-  build-msvc-lib:
+  build:
     runs-on: windows-latest
-
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64]
+        configuration: [Release]
+    
     steps:
+      # 检出代码
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Set up MSVC environment
+        with:
+          fetch-depth: 1
+      
+      # 设置MSVC编译器环境
+      - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: x64  # 目标架构
-
-      - name: Build static library with MSVC
+          arch: ${{ matrix.arch }}
+      
+      # 安装必要的依赖
+      - name: Install dependencies
         run: |
-          # 查看MSVC版本（修正：cl无参数时会显示版本）
-          cl
-          # 编译静态库：移除FC=ifort（避免Fortran依赖），指定目标为libceed.lib
-          make STATIC=1 CC=cl libceed.lib
-        env:
-          # MSVC编译选项：静态链接C运行时，适配C11标准
-          CFLAGS: /std:c11 /W3 /MT
-          CXXFLAGS: /std:c++17 /W3 /MT
-          AR: lib.exe  # 指定MSVC的静态库工具（替代ar）
-
-      - name: Upload .lib artifact
-        uses: actions/upload-artifact@v4
+          # Windows上不需要额外的依赖，因为我们将使用MSVC
+          echo "No additional dependencies needed for basic build"
+      
+      # 创建构建目录
+      - name: Create build directory
+        run: mkdir -p build
+      
+      # 编译静态库
+      - name: Build static library
+        shell: cmd
+        run: |
+          rem 设置构建静态库的环境变量
+          set STATIC=1
+          
+          rem 设置编译器和链接器为MSVC
+          set CC=cl
+          set CXX=cl
+          set AR=lib
+          set ARFLAGS=/NOLOGO
+          
+          rem 设置编译选项
+          set OPT=/O2
+          set CFLAGS=%OPT% /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS
+          set CXXFLAGS=%OPT% /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS
+          
+          rem 执行构建
+          nmake /f Makefile lib
+      
+      # 验证构建结果
+      - name: Verify build
+        run: |
+          # 查找生成的静态库文件
+          Get-ChildItem -Recurse -Filter "*.lib" -Path .
+          Get-ChildItem -Recurse -Filter "*.a" -Path .
+      
+      # 保存构建产物
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
         with:
-          name: msvc-static-lib
-          path: lib/libceed.lib  # 确保路径与生成的库一致
+          name: libCEED-static-lib-${{ matrix.arch }}-${{ matrix.configuration }}
+          path: |
+            lib/libceed.lib
+            lib/libceed.a
+            include/**/*.h
