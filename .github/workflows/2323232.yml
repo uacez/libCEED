@@ -1,0 +1,80 @@
+name: Windows Multi-Compiler Static Library Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler_version: ["2019", "2022"]
+        arch: [x64]
+    
+    steps:
+      # 检出代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      # 设置MSVC编译器环境 - 根据版本选择
+      - name: Setup MSVC 2019
+        if: matrix.compiler_version == '2019'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+          toolset: 14.29
+          sdk: 10.0.19041.0
+      
+      - name: Setup MSVC 2022
+        if: matrix.compiler_version == '2022'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+          toolset: 14.34
+          sdk: 10.0.22621.0
+      
+      # 编译静态库
+      - name: Build static library
+        shell: bash
+        run: |
+          # 设置构建静态库的环境变量
+          export STATIC=1
+          
+          # 设置编译器和链接器为MSVC
+          export CC=cl
+          export CXX=cl
+          export AR=lib
+          export ARFLAGS="/NOLOGO"
+          
+          # 修复MSVC不兼容的问题
+          export CPPFLAGS="-DCEED_SKIP_VISIBILITY -D__restrict__=__restrict"
+          
+          # 设置编译选项
+          export CFLAGS="/nologo /O2 /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
+          export CXXFLAGS="/nologo /O2 /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
+          
+          # 移除OPT变量
+          unset OPT
+          
+          # 显示编译器版本
+          cl /? | head -n 2
+          
+          # 执行构建
+          make lib -e
+      
+      # 保存构建产物
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: libCEED-static-lib-vs${{ matrix.compiler_version }}-${{ matrix.arch }}
+          path: |
+            lib/libceed.lib
+            include/**/*.h
