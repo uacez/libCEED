@@ -40,12 +40,26 @@ jobs:
       - name: Create build directory
         run: mkdir -p build
       
-      # 编译静态库
+      # 编译静态库 - 使用bash shell
       - name: Build static library
-        shell: cmd
+        shell: bash
         run: |
-          rem 直接在nmake命令中传递参数，而不是设置环境变量
-          nmake /f Makefile lib STATIC=1 CC=cl CXX=cl AR=lib ARFLAGS=/NOLOGO OPT=/O2 "CFLAGS=/O2 /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS" "CXXFLAGS=/O2 /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
+          # 设置构建静态库的环境变量
+          export STATIC=1
+          
+          # 设置编译器和链接器为MSVC
+          export CC=cl
+          export CXX=cl
+          export AR=lib
+          export ARFLAGS=/NOLOGO
+          
+          # 设置编译选项
+          export OPT=/O2
+          export CFLAGS="$OPT /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
+          export CXXFLAGS="$OPT /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
+          
+          # 执行构建 - 使用make而不是nmake
+          make lib
       
       # 验证构建结果
       - name: Verify build
@@ -53,6 +67,7 @@ jobs:
           # 查找生成的静态库文件
           Get-ChildItem -Recurse -Filter "*.lib" -Path .
           Get-ChildItem -Recurse -Filter "*.a" -Path .
+        shell: powershell
       
       # 保存构建产物
       - name: Upload build artifacts
