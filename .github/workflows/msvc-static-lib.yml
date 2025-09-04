@@ -52,12 +52,16 @@ jobs:
           export CC=cl
           export CXX=cl
           export AR=lib
-          export ARFLAGS=/NOLOGO
+          export ARFLAGS="/NOLOGO"
           
-          # 设置编译选项
-          export OPT=/O2
-          export CFLAGS="$OPT /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
-          export CXXFLAGS="$OPT /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
+          # 修复MSVC不支持visibility属性的问题
+          export CPPFLAGS="-DCEED_SKIP_VISIBILITY"
+          
+          # 设置编译选项 - 使用正确的MSVC格式
+          export OPT="/O2"
+          # 注意：MSVC的编译选项不需要引号包裹
+          export CFLAGS=$OPT" /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
+          export CXXFLAGS=$OPT" /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
           
           # 执行构建
           make lib
