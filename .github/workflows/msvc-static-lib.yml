@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # 允许手动触发工作流
+  workflow_dispatch:  # 保留手动触发
 
 jobs:
   build-msvc-lib:
@@ -18,22 +18,22 @@ jobs:
       - name: Set up MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: x64  # 目标架构（x64或x86）
+          arch: x64  # 目标架构
 
       - name: Build static library with MSVC
         run: |
-          # 查看MSVC版本（可选，用于调试）
-          cl.exe
-          # 编译静态库（STATIC=1启用静态库模式）
-          make STATIC=1 CC=cl FC=ifort libceed.a
+          # 查看MSVC版本（修正：cl无参数时会显示版本）
+          cl
+          # 编译静态库：移除FC=ifort（避免Fortran依赖），指定目标为libceed.lib
+          make STATIC=1 CC=cl libceed.lib
         env:
-          # 传递MSVC编译选项（适配Makefile中的条件编译）
-          CFLAGS: /std:c11 /W3 /MT  # /MT：静态链接C运行时
+          # MSVC编译选项：静态链接C运行时，适配C11标准
+          CFLAGS: /std:c11 /W3 /MT
           CXXFLAGS: /std:c++17 /W3 /MT
-          AR: lib.exe  # 指定MSVC的静态库工具
+          AR: lib.exe  # 指定MSVC的静态库工具（替代ar）
 
       - name: Upload .lib artifact
         uses: actions/upload-artifact@v4
         with:
           name: msvc-static-lib
-          path: lib/libceed.lib  # 静态库输出路径（根据Makefile配置调整）
+          path: lib/libceed.lib  # 确保路径与生成的库一致
