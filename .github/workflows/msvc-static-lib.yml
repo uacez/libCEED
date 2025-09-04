@@ -44,22 +44,8 @@ jobs:
       - name: Build static library
         shell: cmd
         run: |
-          rem 设置构建静态库的环境变量
-          set STATIC=1
-          
-          rem 设置编译器和链接器为MSVC
-          set CC=cl
-          set CXX=cl
-          set AR=lib
-          set ARFLAGS=/NOLOGO
-          
-          rem 设置编译选项
-          set OPT=/O2
-          set CFLAGS=%OPT% /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS
-          set CXXFLAGS=%OPT% /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS
-          
-          rem 执行构建
-          nmake /f Makefile lib
+          rem 直接在nmake命令中传递参数，而不是设置环境变量
+          nmake /f Makefile lib STATIC=1 CC=cl CXX=cl AR=lib ARFLAGS=/NOLOGO OPT=/O2 "CFLAGS=/O2 /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS" "CXXFLAGS=/O2 /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
       
       # 验证构建结果
       - name: Verify build
