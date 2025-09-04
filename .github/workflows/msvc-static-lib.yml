@@ -1,0 +1,39 @@
+name: MSVC Static Library
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # 允许手动触发工作流
+
+jobs:
+  build-msvc-lib:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64  # 目标架构（x64或x86）
+
+      - name: Build static library with MSVC
+        run: |
+          # 查看MSVC版本（可选，用于调试）
+          cl.exe
+          # 编译静态库（STATIC=1启用静态库模式）
+          make STATIC=1 CC=cl FC=ifort libceed.a
+        env:
+          # 传递MSVC编译选项（适配Makefile中的条件编译）
+          CFLAGS: /std:c11 /W3 /MT  # /MT：静态链接C运行时
+          CXXFLAGS: /std:c++17 /W3 /MT
+          AR: lib.exe  # 指定MSVC的静态库工具
+
+      - name: Upload .lib artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: msvc-static-lib
+          path: lib/libceed.lib  # 静态库输出路径（根据Makefile配置调整）
