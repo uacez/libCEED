@@ -70,7 +70,7 @@ jobs:
       
       # 保存构建产物
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: libCEED-static-lib-${{ matrix.arch }}-${{ matrix.configuration }}
           path: |
