@@ -33,14 +33,15 @@ jobs:
       # 安装必要的依赖
       - name: Install dependencies
         run: |
-          # Windows上不需要额外的依赖，因为我们将使用MSVC
           echo "No additional dependencies needed for basic build"
+        shell: bash
       
       # 创建构建目录
       - name: Create build directory
         run: mkdir -p build
+        shell: bash
       
-      # 编译静态库 - 使用bash shell
+      # 编译静态库 - 使用bash shell和make命令
       - name: Build static library
         shell: bash
         run: |
@@ -58,7 +59,7 @@ jobs:
           export CFLAGS="$OPT /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
           export CXXFLAGS="$OPT /nologo /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
           
-          # 执行构建 - 使用make而不是nmake
+          # 执行构建
           make lib
       
       # 验证构建结果
