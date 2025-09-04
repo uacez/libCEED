@@ -1,4 +1,4 @@
-name: Windows Static Library Build
+name: Windows Optimized Static Library Build
 
 on:
   push:
@@ -14,8 +14,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [x64]
-        configuration: [Release]
+        arch: [x64, x86]
+        configuration: [Release, Debug]
+        include:
+          - configuration: Release
+            cflags: "/nologo /O2 /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
+          - configuration: Debug
+            cflags: "/nologo /Od /Zi /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS /D_DEBUG"
     
     steps:
       # 检出代码
@@ -57,14 +62,14 @@ jobs:
           # 修复MSVC不兼容的问题
           export CPPFLAGS="-DCEED_SKIP_VISIBILITY -D__restrict__=__restrict"
           
-          # 设置编译选项 - 使用Windows风格的路径和正确的MSVC选项
-          export CFLAGS="/nologo /O2 /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
-          export CXXFLAGS="/nologo /O2 /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
+          # 设置编译选项
+          export CFLAGS="${{ matrix.cflags }}"
+          export CXXFLAGS="${{ matrix.cflags }}"
           
-          # 注意：移除OPT变量，直接在CFLAGS中指定优化级别
+          # 移除OPT变量，避免与MSVC选项冲突
           unset OPT
           
-          # 执行构建 - 使用更具体的命令
+          # 执行构建
           make lib -e
       
       # 验证构建结果
@@ -82,5 +87,4 @@ jobs:
           name: libCEED-static-lib-${{ matrix.arch }}-${{ matrix.configuration }}
           path: |
             lib/libceed.lib
-            lib/libceed.a
             include/**/*.h
