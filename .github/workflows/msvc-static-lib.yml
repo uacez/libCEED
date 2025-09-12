@@ -3,8 +3,18 @@ name: Windows Optimized Static Library Build
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'Makefile'
+      - '.github/workflows/msvc-static-lib.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'Makefile'
+      - '.github/workflows/msvc-static-lib.yml'
   workflow_dispatch:
 
 jobs:
@@ -19,68 +29,72 @@ jobs:
         include:
           - configuration: Release
             cflags: "/nologo /O2 /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
+            build_dir: build/release
           - configuration: Debug
             cflags: "/nologo /Od /Zi /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS /D_DEBUG"
+            build_dir: build/debug
     
     steps:
-      # 检出代码
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-      
-      # 设置MSVC编译器环境
+
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.arch }}
-      
-      # 安装必要的依赖
+
       - name: Install dependencies
         run: |
-          echo "No additional dependencies needed for basic build"
-        shell: bash
-      
-      # 创建构建目录
+          choco install make --no-progress
+          make --version  # 验证安装成功
+        shell: powershell
+        timeout-minutes: 5
+
+      - name: Cache build artifacts
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ matrix.build_dir }}
+            lib
+          key: ${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
+          restore-keys: |
+            ${{ matrix.arch }}-${{ matrix.configuration }}-
+
       - name: Create build directory
-        run: mkdir -p build
+        run: mkdir -p ${{ matrix.build_dir }}
         shell: bash
-      
-      # 编译静态库 - 使用bash shell和make命令
+
       - name: Build static library
         shell: bash
+        working-directory: ${{ matrix.build_dir }}
         run: |
-          # 设置构建静态库的环境变量
           export STATIC=1
-          
-          # 设置编译器和链接器为MSVC
           export CC=cl
           export CXX=cl
           export AR=lib
           export ARFLAGS="/NOLOGO"
-          
-          # 修复MSVC不兼容的问题
           export CPPFLAGS="-DCEED_SKIP_VISIBILITY -D__restrict__=__restrict"
-          
-          # 设置编译选项
           export CFLAGS="${{ matrix.cflags }}"
           export CXXFLAGS="${{ matrix.cflags }}"
-          
-          # 移除OPT变量，避免与MSVC选项冲突
           unset OPT
           
-          # 执行构建
-          make lib -e
-      
-      # 验证构建结果
-      - name: Verify build
+          # 执行构建并输出详细日志
+          make -C .. lib -e V=1
+        timeout-minutes: 10
+
+      - name: Verify build artifacts
         run: |
-          # 查找生成的静态库文件
-          Get-ChildItem -Recurse -Filter "*.lib" -Path .
-          Get-ChildItem -Recurse -Filter "*.a" -Path .
+          $libPath = "lib/libceed.lib"
+          if (-not (Test-Path $libPath)) {
+            Write-Error "Static library $libPath not found!"
+            exit 1
+          }
+          Write-Host "Found static library: $libPath"
+          Get-Item $libPath | Select-Object Name, Length, LastWriteTime
         shell: powershell
-      
-      # 保存构建产物
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -88,3 +102,5 @@ jobs:
           path: |
             lib/libceed.lib
             include/**/*.h
+          retention-days: 14
+          if-no-files-found: error
