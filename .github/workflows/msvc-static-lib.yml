@@ -1,106 +1,167 @@
-name: Windows Optimized Static Library Build
+name: Windows MSVC Static Library Build (libCEED)
 
+# 触发条件：仅修改核心代码或工作流时执行
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
     paths:
       - 'src/**'
       - 'include/**'
       - 'Makefile'
       - '.github/workflows/msvc-static-lib.yml'
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
     paths:
       - 'src/**'
       - 'include/**'
       - 'Makefile'
       - '.github/workflows/msvc-static-lib.yml'
-  workflow_dispatch:
+  workflow_dispatch: # 允许手动触发
 
 jobs:
-  build:
+  build-msvc-static:
     runs-on: windows-latest
-    
     strategy:
-      fail-fast: false
+      fail-fast: false # 某个架构/配置失败不影响其他
       matrix:
         arch: [x64, x86]
-        configuration: [Release, Debug]
+        config: [Release, Debug]
         include:
-          - configuration: Release
+          - config: Release
             cflags: "/nologo /O2 /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS"
-            build_dir: build/release
-          - configuration: Debug
+            objdir: "build/msvc/release/${{ matrix.arch }}"
+          - config: Debug
             cflags: "/nologo /Od /Zi /W3 /wd4100 /wd4127 /wd4244 /wd4267 /wd4800 /D_CRT_SECURE_NO_WARNINGS /D_DEBUG"
-            build_dir: build/debug
-    
+            objdir: "build/msvc/debug/${{ matrix.arch }}"
+
     steps:
-      - name: Checkout code
+      ##########################################################################
+      # 1. 检出代码
+      ##########################################################################
+      - name: Checkout libCEED source
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          submodules: false # 若依赖子模块，需改为 true
 
-      - name: Setup MSVC
+      ##########################################################################
+      # 2. 安装核心依赖（解决 make 缺失、编译器适配问题）
+      ##########################################################################
+      - name: Install build dependencies
+        shell: powershell
+        timeout-minutes: 8
+        run: |
+          # 安装 Chocolatey 包管理器（若未预装）
+          if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+            Set-ExecutionPolicy Bypass -Scope Process -Force;
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072;
+            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          }
+
+          # 安装必要工具：
+          # - make：完整的 GNU Make（解决 Git Bash 简化版不兼容问题）
+          # - pkg-config：解析依赖（libCEED 可能依赖）
+          # - winflexbison：若涉及语法解析（可选，根据实际依赖添加）
+          choco install make pkgconfiglite winflexbison --no-progress --yes
+
+          # 验证安装结果
+          make --version
+          pkg-config --version
+          echo "依赖安装完成"
+
+      ##########################################################################
+      # 3. 配置 MSVC 环境（指定架构 x64/x86）
+      ##########################################################################
+      - name: Setup MSVC compiler
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: ${{ matrix.arch }}
+          arch: ${{ matrix.arch }} # 自动配置对应架构的 MSVC 环境变量
+          toolset: 14.44 # 匹配日志中的 MSVC 版本（14.44.35207）
 
-      - name: Install dependencies
-        run: |
-          choco install make --no-progress
-          make --version  # 验证安装成功
-        shell: powershell
-        timeout-minutes: 5
-
-      - name: Cache build artifacts
-        uses: actions/cache@v3
-        with:
-          path: |
-            ${{ matrix.build_dir }}
-            lib
-          key: ${{ matrix.arch }}-${{ matrix.configuration }}-${{ github.sha }}
-          restore-keys: |
-            ${{ matrix.arch }}-${{ matrix.configuration }}-
-
-      - name: Create build directory
-        run: mkdir -p ${{ matrix.build_dir }}
+      ##########################################################################
+      # 4. 调试：验证环境与 Makefile 有效性（关键排错步骤）
+      ##########################################################################
+      - name: Debug environment & Makefile
         shell: bash
-
-      - name: Build static library
-        shell: bash
-        working-directory: ${{ matrix.build_dir }}
         run: |
-          export STATIC=1
-          export CC=cl
-          export CXX=cl
-          export AR=lib
-          export ARFLAGS="/NOLOGO"
-          export CPPFLAGS="-DCEED_SKIP_VISIBILITY -D__restrict__=__restrict"
-          export CFLAGS="${{ matrix.cflags }}"
-          export CXXFLAGS="${{ matrix.cflags }}"
-          unset OPT
-          
-          # 执行构建并输出详细日志
-          make -C .. lib -e V=1
-        timeout-minutes: 10
+          # 打印当前环境变量（重点看 CC、CXX、LIB、INCLUDE）
+          echo "=== Environment Variables ==="
+          echo "CC: $CC"
+          echo "CXX: $CXX"
+          echo "AR: $AR"
+          echo "LIB: $LIB"
+          echo "INCLUDE: $INCLUDE"
+          echo "STATIC: $STATIC"
+          echo "OBJDIR: ${{ matrix.objdir }}"
 
-      - name: Verify build artifacts
-        run: |
-          $libPath = "lib/libceed.lib"
-          if (-not (Test-Path $libPath)) {
-            Write-Error "Static library $libPath not found!"
+          # 验证 Makefile 存在性
+          echo -e "\n=== Check Makefile ==="
+          if [ ! -f "Makefile" ]; then
+            echo "ERROR: Makefile not found in root directory!"
             exit 1
-          }
-          Write-Host "Found static library: $libPath"
-          Get-Item $libPath | Select-Object Name, Length, LastWriteTime
-        shell: powershell
+          fi
+          ls -l Makefile
 
+          # 打印 Makefile 中定义的目标（确认是否有 lib 目标）
+          echo -e "\n=== Makefile Targets (lib related) ==="
+          make -p | grep -E "PHONY:.*lib|^lib:|^libceed\.lib:" || echo "WARNING: No lib target found in Makefile"
+
+      ##########################################################################
+      # 5. 编译静态库（核心修复：适配 MSVC + 确保 lib 目标可执行）
+      ##########################################################################
+      - name: Build libCEED static library (libceed.lib)
+        shell: bash
+        timeout-minutes: 15
+        env:
+          # 强制指定静态库构建模式
+          STATIC: 1
+          # MSVC 工具链配置
+          CC: cl.exe
+          CXX: cl.exe
+          AR: lib.exe          # MSVC 静态库归档工具
+          ARFLAGS: "/NOLOGO"   # lib.exe 静默模式（不输出冗余日志）
+          # 编译选项（根据 Release/Debug 动态传入）
+          CFLAGS: ${{ matrix.cflags }}
+          CXXFLAGS: ${{ matrix.cflags }}
+          # 适配 MSVC 的兼容性宏（解决 GCC 特有语法问题）
+          CPPFLAGS: "-DCEED_SKIP_VISIBILITY -D__restrict__=__restrict -DCC_VENDOR_MSVC"
+          # 输出目录（避免与其他编译器产物冲突）
+          OBJDIR: ${{ matrix.objdir }}
+          # 禁用 libCEED 默认 OPT 变量（避免与 MSVC 选项冲突）
+          OPT: ""
+        run: |
+          # 创建输出目录（确保 Makefile 能写入产物）
+          mkdir -p $OBJDIR
+          mkdir -p lib/msvc/${{ matrix.arch }}/${{ matrix.config }}
+
+          # 执行构建：
+          # - -e：强制使用当前环境变量（覆盖 Makefile 内部定义）
+          # - V=1：输出详细编译日志（便于排错）
+          # - lib：目标（生成静态库）
+          make lib -e V=1
+
+          # 验证产物是否生成（手动复制到统一路径，便于后续上传）
+          if [ -f "$OBJDIR/libceed.lib" ]; then
+            cp $OBJDIR/libceed.lib lib/msvc/${{ matrix.arch }}/${{ matrix.config }}/
+            echo "静态库生成成功：lib/msvc/${{ matrix.arch }}/${{ matrix.config }}/libceed.lib"
+          else
+            echo "ERROR: 未找到生成的 libceed.lib！"
+            ls -lR $OBJDIR # 打印输出目录所有文件
+            exit 1
+          fi
+
+      ##########################################################################
+      # 6. 上传构建产物（含头文件 + 静态库）
+      ##########################################################################
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: libCEED-static-lib-${{ matrix.arch }}-${{ matrix.configuration }}
-          path: |
-            lib/libceed.lib
+          name: libCEED-msvc-static-${{ matrix.arch }}-${{ matrix.config }}
+          path:
+            # 静态库（统一路径）
+            lib/msvc/${{ matrix.arch }}/${{ matrix.config }}/libceed.lib
+            # 头文件（供用户调用库时使用）
             include/**/*.h
-          retention-days: 14
-          if-no-files-found: error
+            include/**/*.hpp
+          retention-days: 30 # 产物保留 30 天（可按需调整）
+          if-no-files-found: error # 若无文件，直接报错（避免空产物）
